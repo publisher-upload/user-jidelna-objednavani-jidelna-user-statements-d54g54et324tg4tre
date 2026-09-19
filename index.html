@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>STRAVA (via ITAS)</title>
+    <style>
+        :root {
+            --primary: #e91e63;
+            --bg: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-main: #333333;
+            --text-muted: #777777;
+            --border: #e0e0e0;
+            --success: #4CAF50;
+            --danger: #f44336;
+            --radius: 12px;
+        }
+        * { box-sizing: border-box; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; padding: 0; background-color: var(--bg); color: var(--text-main); padding-bottom: 70px; }
+        
+        /* Header & Profil */
+        .header { background: var(--card-bg); padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); text-align: center; position: sticky; top: 0; z-index: 10; }
+        .header h1 { margin: 0; font-size: 22px; color: var(--primary); letter-spacing: 1px; }
+        .profile-info { margin-top: 15px; display: flex; justify-content: space-between; font-size: 16px; background: #fff3f6; padding: 10px 15px; border-radius: var(--radius); }
+        .profile-info span { font-weight: bold; color: var(--primary); }
+
+        /* Vícestránkový systém */
+        .page { display: none; padding: 15px; animation: fadeIn 0.3s; }
+        .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Jídelníček */
+        .day-card { background: var(--card-bg); border-radius: var(--radius); padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .day-title { font-size: 18px; font-weight: bold; margin: 0 0 15px 0; border-bottom: 1px solid var(--border); padding-bottom: 10px; display: flex; align-items: center; }
+        .day-title .check-icon { color: var(--success); margin-right: 8px; font-size: 20px; display: none; }
+        
+        .meal-row { margin-bottom: 15px; }
+        .meal-row:last-child { margin-bottom: 0; }
+        .meal-label { font-weight: bold; font-size: 14px; color: var(--text-muted); display: block; margin-bottom: 5px; }
+        .meal-content { display: flex; justify-content: space-between; align-items: center; }
+        .meal-name { flex-grow: 1; font-size: 16px; margin-right: 10px; }
+        
+        /* Checkboxy */
+        .custom-checkbox { width: 30px; height: 30px; border: 2px solid var(--border); border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; transition: 0.2s; flex-shrink: 0; }
+        .custom-checkbox.checked { background: var(--primary); border-color: var(--primary); }
+        .custom-checkbox.checked::after { content: '✓'; color: white; font-weight: bold; font-size: 18px; }
+        .custom-checkbox.disabled { background: #eee; border-color: #ccc; cursor: not-allowed; }
+        .custom-checkbox.disabled.checked { background: #aaa; border-color: #aaa; }
+
+        /* Alergeny */
+        .allergens { font-size: 12px; color: var(--text-muted); margin-top: 4px; cursor: pointer; display: inline-flex; align-items: center; }
+        .allergens i { background: #e0e0e0; color: #333; border-radius: 50%; width: 16px; height: 16px; display: inline-flex; justify-content: center; align-items: center; font-style: normal; font-weight: bold; margin-left: 5px; font-size: 10px; }
+
+        /* Plovoucí košík */
+        .cart-bar { position: fixed; bottom: 65px; left: 0; width: 100%; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); padding: 15px; z-index: 90; display: none; flex-direction: column; border-top-left-radius: 20px; border-top-right-radius: 20px; animation: slideUp 0.3s; }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .cart-text { font-size: 16px; font-weight: bold; text-align: center; margin-bottom: 15px; }
+        .cart-text span.red { color: var(--danger); }
+        .cart-text span.green { color: var(--success); }
+        .cart-buttons { display: flex; gap: 10px; }
+        .btn-cancel { flex: 1; padding: 12px; border: 1px solid var(--border); background: white; border-radius: var(--radius); font-weight: bold; }
+        .btn-confirm { flex: 1; padding: 12px; border: none; background: var(--primary); color: white; border-radius: var(--radius); font-weight: bold; }
+
+        /* Modals (Překryvná okna) */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); backdrop-filter: blur(5px); z-index: 100; display: none; justify-content: center; align-items: center; padding: 20px; }
+        .modal-content { background: white; width: 100%; max-width: 400px; max-height: 90vh; overflow-y: auto; border-radius: var(--radius); padding: 20px; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .modal-close { position: absolute; top: 15px; right: 15px; font-size: 24px; cursor: pointer; color: var(--text-muted); line-height: 1; font-weight: bold; }
+        
+        .modal-h2 { font-size: 20px; color: var(--primary); margin-top: 0; margin-bottom: 20px; padding-right: 20px; }
+        .modal-sub { font-weight: bold; font-size: 16px; margin: 15px 0 5px 0; color: #555; }
+        .modal-text { font-size: 14px; margin: 0; line-height: 1.4; }
+        
+        /* Zprávy */
+        .msg-item { background: white; padding: 15px; border-radius: var(--radius); margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; }
+        .msg-item.unread { font-weight: bold; border-left: 4px solid var(--primary); }
+        .msg-item.read { opacity: 0.6; }
+        .msg-date { font-size: 12px; color: var(--text-muted); margin-top: 5px; }
+
+        /* Nabídka & Formuláře */
+        .menu-btn { display: block; width: 100%; padding: 15px; background: white; border: none; border-radius: var(--radius); margin-bottom: 10px; font-size: 16px; font-weight: bold; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .static-info { text-align: center; margin-top: 20px; color: var(--text-muted); }
+        .static-info h3 { color: var(--text-main); margin: 0 0 5px 0; }
+        
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px; }
+        .form-group input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 16px; }
+        .error-msg { color: var(--danger); font-size: 12px; margin-top: 5px; display: none; }
+
+        /* Spodní Menu */
+        .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; height: 60px; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); display: flex; z-index: 80; border-top: 1px solid var(--border); }
+        .nav-item { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 12px; color: var(--text-muted); cursor: pointer; position: relative; }
+        .nav-item.active { color: var(--primary); font-weight: bold; }
+        .nav-icon { font-size: 22px; margin-bottom: 2px; }
+        .dot { position: absolute; top: 10px; right: 35%; width: 8px; height: 8px; background: red; border-radius: 50%; display: none; }
+
+        .link { color: var(--primary); text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>STRAVA (via ITAS)</h1>
+        <div class="profile-info">
+            <div>Jméno: <span>Adam Rudolfský</span></div>
+            <div>Zůstatek: <span id="ui-balance">... Kč</span></div>
+        </div>
+    </div>
+
+    <!-- STRÁNKA: OBJEDNÁVKY -->
+    <div id="page-objednavky" class="page active">
+        <div id="calendar-container">Načítám data...</div>
+    </div>
+
+    <!-- STRÁNKA: ZPRÁVY -->
+    <div id="page-zpravy" class="page">
+        <h2>Zprávy</h2>
+        <div id="messages-container"></div>
+    </div>
+
+    <!-- STRÁNKA: ČTENÍ ZPRÁVY (Sub-page) -->
+    <div id="page-cteni-zpravy" class="page">
+        <button class="menu-btn" onclick="switchPage('zpravy')" style="text-align: center;">Zpět na zprávy</button>
+        <h2 id="read-msg-title"></h2>
+        <div class="msg-date" id="read-msg-date"></div>
+        <p class="modal-text" id="read-msg-body" style="margin-top: 20px; font-size: 16px;"></p>
+    </div>
+
+    <!-- STRÁNKA: NABÍDKA -->
+    <div id="page-nabidka" class="page">
+        <button class="menu-btn" onclick="switchPage('objednavky')">📋 Objednávky</button>
+        <button class="menu-btn" onclick="switchPage('zpravy')">✉️ Zprávy</button>
+        <button class="menu-btn" onclick="switchPage('konta')">💳 Konta a platby</button>
+        <button class="menu-btn" onclick="switchPage('heslo')">🔒 Heslo</button>
+        <button class="menu-btn" onclick="switchPage('o-jidelne')">ℹ️ O jídelně</button>
+        
+        <div class="static-info">
+            <h3>Adam Rudolfský</h3>
+            <p>rudolfskyadam@seznam.cz<br>Jídelna 1692<br>Uživatel rudolfskyadam</p>
+            <button class="menu-btn" style="text-align:center; color:var(--primary);" onclick="switchPage('heslo')">Změnit heslo</button>
+        </div>
+    </div>
+
+    <!-- STRÁNKA: O JÍDELNĚ -->
+    <div id="page-o-jidelne" class="page">
+        <h2 class="modal-h2">Školní jídelna Olomouc-Hejčín</h2>
+        <div class="modal-sub">Číslo jídelny:</div>
+        <div class="modal-text">1692</div>
+
+        <div class="modal-sub">Adresa jídelny:</div>
+        <div class="modal-text">Tomkova 45<br>Olomouc<br>779 00</div>
+
+        <div class="modal-sub">Kontakty:</div>
+        <div class="modal-text">Telefon: <a href="tel:585711156" class="link">585 711 156</a></div>
+        <div class="modal-text">E-mail: <a href="mailto:infojidelna@gytool.cz" class="link">infojidelna@gytool.cz</a></div>
+        <div class="modal-text">Web: <a href="http://www.jidelnahejcin.cz" class="link" target="_blank">www.jidelnahejcin.cz</a></div>
+    </div>
+
+    <!-- STRÁNKA: HESLO -->
+    <div id="page-heslo" class="page">
+        <h2 class="modal-h2">Změnit heslo</h2>
+        <div class="modal-sub">Původní heslo:</div>
+        <div class="modal-text" id="ui-current-password" style="margin-bottom: 20px; font-family: monospace;">***</div>
+        
+        <div class="form-group">
+            <label>Nové heslo:</label>
+            <input type="password" id="input-pass1">
+        </div>
+        <div class="form-group">
+            <label>Ověření nového hesla (Heslo znovu):</label>
+            <input type="password" id="input-pass2">
+            <div id="pass-error" class="error-msg"></div>
+        </div>
+        <button class="btn-confirm" style="width:100%; padding: 15px;" onclick="changePassword()">Potvrdit</button>
+    </div>
+
+    <!-- STRÁNKA: KONTA A PLATBY -->
+    <div id="page-konta" class="page">
+        <h2 class="modal-h2">Konta a platby</h2>
+        <div class="modal-sub">Zůstatek:</div>
+        <div class="modal-text" style="font-size: 18px; font-weight:bold; color:var(--primary);" id="ui-konta-balance">...</div>
+        
+        <h2 class="modal-sub" style="margin-top:25px;">Platba</h2>
+        <div class="modal-sub">Účet:</div><div class="modal-text">43-5704820237/0100</div>
+        <div class="modal-sub">Variabilní symbol:</div><div class="modal-text">2222016905</div>
+        <div class="modal-sub">Částka:</div><div class="modal-text">100 Kč</div>
+        <div class="modal-sub">Číslo přidaného účtu:</div><div class="modal-text" id="ui-bank-account">...</div>
+        
+        <p class="modal-text" style="margin-top:15px; font-size:12px; text-align:justify;">
+            Částku při odeslání platby nastavte dle svých požadavků. Jakmile bude platba připsána na účet jídelny ve složce daného žáka jídelny, bude zůstatek povýšen. Lhůta od odeslání platby do navýšení zůstatku je max. 3 pracovní dny. Při odeslání doporučujeme zvolit okamžitou platbu (pokud ji vaše banka podporuje), výrazně to urychlí připsání na účet a zvýšení zůstatku.
+        </p>
+        <div style="text-align: center; margin-top: 20px;">
+            <img src="qr-platba.png" alt="QR Platba" style="max-width: 200px; height: auto; border-radius: 8px;">
+        </div>
+    </div>
+
+    <!-- Plovoucí košík -->
+    <div class="cart-bar" id="cart-bar">
+        <div class="cart-text" id="cart-text"></div>
+        <div class="cart-buttons">
+            <button class="btn-cancel" onclick="cancelCart()">Zrušit</button>
+            <button class="btn-confirm" onclick="confirmCart()">Potvrdit</button>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal-overlay" id="modal-info">
+        <div class="modal-content">
+            <div class="modal-close" onclick="closeModal('modal-info')">×</div>
+            <h2 class="modal-h2" id="mod-title">Den Datum - Typ</h2>
+            
+            <div class="modal-sub">Informace</div>
+            <div class="modal-sub">Výdejní místo</div>
+            <div class="modal-text">SG - SLOVANSKÉ GYMNÁZIUM OLOMOUC</div>
+            
+            <div class="modal-sub">Cena</div>
+            <div class="modal-text">45,00 Kč</div>
+            
+            <div class="modal-sub">Popis jídla</div>
+            <div class="modal-text" id="mod-desc">...</div>
+            
+            <div class="modal-sub">Alergeny</div>
+            <div class="modal-text" id="mod-allergens">...</div>
+            
+            <div class="modal-sub">Objednávání a odhlašování do:</div>
+            <div class="modal-text" id="mod-deadline" style="color:var(--danger); font-weight:bold;">...</div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-warning">
+        <div class="modal-content" style="text-align: center;">
+            <div style="font-size: 50px; color: orange; margin-bottom: 10px;">⚠️</div>
+            <h2 class="modal-h2">Zůstatek klesl pod 200 Kč!</h2>
+            <p class="modal-text" style="margin-bottom: 20px;">Váš zůstatek je nižší než 200 Kč, doporučujeme navýšit zůstatek. Lhůta pro připsání zaslané platby k vašemu zůstatku jsou až 3 dny.</p>
+            <button class="btn-confirm" style="background:#2196F3; width:100%;" onclick="closeModal('modal-warning'); switchPage('objednavky');">Zavřít</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-no-balance">
+        <div class="modal-content" style="text-align: center;">
+            <div style="font-size: 50px; color: red; margin-bottom: 10px;">⚠️</div>
+            <h2 class="modal-h2">Nedostatečný zůstatek!</h2>
+            <p class="modal-text" style="margin-bottom: 20px;">Nedostatečný zůstatek! Zkontrolujte stav platby</p>
+            <button class="btn-confirm" style="background:#2196F3; width:100%;" onclick="closeModal('modal-no-balance');">Zavřít</button>
+        </div>
+    </div>
+
+    <!-- Spodní menu -->
+    <div class="bottom-nav">
+        <div class="nav-item active" onclick="switchPage('objednavky')" id="nav-obj">
+            <div class="nav-icon">📋</div><div>Objednávky</div>
+        </div>
+        <div class="nav-item" onclick="switchPage('zpravy')" id="nav-zpr">
+            <div class="dot" id="msg-dot"></div>
+            <div class="nav-icon">✉️</div><div>Zprávy</div>
+        </div>
+        <div class="nav-item" onclick="switchPage('nabidka')" id="nav-nab">
+            <div class="nav-icon">≡</div><div>Nabídka</div>
+        </div>
+    </div>
+
+    <!-- FIREBASE & LOGIKA -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
+        import { getDatabase, ref, onValue, set, get, update, remove } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAF1L22FXQnBv3SNR_3tEG3Fq49Zd3xlc4",
+            authDomain: "jidelna-10dd0.firebaseapp.com",
+            databaseURL: "https://jidelna-10dd0-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "jidelna-10dd0",
+            storageBucket: "jidelna-10dd0.firebasestorage.app",
+            messagingSenderId: "446801101876",
+            appId: "1:446801101876:web:90357ece62f3b286aef661"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Globální proměnné
+        let currentBalance = 0;
+        let originalOrders = {}; // { '2026-09-22': 'obed1' }
+        let uiOrders = {};       // Aktuálně naklikáno v UI
+        let dbDataObjednani = {};
+        
+        const ALERGENY_LIST = {
+            "01": "01 - Obiloviny obsahující lepek", "02": "02 - Korýši", "03": "03 - Vejce",
+            "04": "04 - Ryby", "05": "05 - Arašídy (podzemnice olejná)", "06": "06 - Sójové boby (sója)",
+            "07": "07 - Mléko", "08": "08 - Ořechy, mandle, pistácie", "09": "09 - Celer", "10": "10 - Hořčice"
+        };
+        const DAYS = ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'];
+
+        // UI Navigace
+        window.switchPage = (pageId) => {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById('page-' + pageId).classList.add('active');
+            
+            if(pageId === 'objednavky') document.getElementById('nav-obj').classList.add('active');
+            if(pageId === 'zpravy') document.getElementById('nav-zpr').classList.add('active');
+            if(pageId === 'nabidka' || pageId === 'heslo' || pageId === 'konta' || pageId === 'o-jidelne') document.getElementById('nav-nab').classList.add('active');
+        };
+
+        window.closeModal = (id) => document.getElementById(id).style.display = 'none';
+        window.openModalInfo = (title, desc, alergenyArr, deadlineStr) => {
+            document.getElementById('mod-title').innerText = title;
+            document.getElementById('mod-desc').innerText = desc;
+            
+            let alStr = "Bez alergenů";
+            if(alergenyArr && alergenyArr !== "none" && alergenyArr.length > 0) {
+                alStr = alergenyArr.map(a => ALERGENY_LIST[a] || a).join('<br>');
+            }
+            document.getElementById('mod-allergens').innerHTML = alStr;
+            document.getElementById('mod-deadline').innerText = deadlineStr;
+            document.getElementById('modal-info').style.display = 'flex';
+        };
+
+        // Změna hesla
+        window.changePassword = async () => {
+            const p1 = document.getElementById('input-pass1').value;
+            const p2 = document.getElementById('input-pass2').value;
+            const err = document.getElementById('pass-error');
+            err.style.display = 'block';
+            if(!p1 || !p2) { err.innerText = "Pole nesmí zůstat prázdné"; return; }
+            if(p1 !== p2) { err.innerText = "Hesla se neshodují"; return; }
+            
+            await update(ref(db, 'Profil'), { heslo: p1 });
+            err.style.color = "var(--success)";
+            err.innerText = "Heslo úspěšně změněno.";
+            setTimeout(() => { err.style.display='none'; switchPage('nabidka'); }, 1500);
+        };
+
+        // Init Načítání
+        function initApp() {
+            // Profil
+            onValue(ref(db, 'Profil'), (snapshot) => {
+                const data = snapshot.val();
+                if(data) {
+                    currentBalance = data.zustatek || 0;
+                    document.getElementById('ui-balance').innerText = currentBalance + " Kč";
+                    document.getElementById('ui-konta-balance').innerText = currentBalance + " Kč";
+                    document.getElementById('ui-current-password').innerText = data.heslo ? "•".repeat(data.heslo.length) : "***";
+                    document.getElementById('ui-bank-account').innerText = data.platebni_ucet || "Nenastaveno";
+                    
+                    // Varování
+                    if(!window.warned && currentBalance <= 200) {
+                        document.getElementById('modal-warning').style.display = 'flex';
+                        window.warned = true;
+                    }
+                }
+            });
+
+            // Zprávy
+            onValue(ref(db, 'Zpravy'), (snapshot) => {
+                const data = snapshot.val();
+                const container = document.getElementById('messages-container');
+                let hasUnread = false;
+                container.innerHTML = "";
+                
+                if(!data) {
+                    container.innerHTML = "<p>Žádné zprávy k dispozici</p>";
+                } else {
+                    const msgs = Object.keys(data).map(k => ({id: k, ...data[k]})).sort((a,b) => b.datum - a.datum);
+                    msgs.forEach(m => {
+                        if(!m.precteno) hasUnread = true;
+                        const dateStr = new Date(m.datum).toLocaleString('cs-CZ');
+                        const div = document.createElement('div');
+                        div.className = `msg-item ${m.precteno ? 'read' : 'unread'}`;
+                        div.innerHTML = `<div>${m.titulek}</div><div class="msg-date">${dateStr}</div>`;
+                        div.onclick = () => openMessage(m.id, m.titulek, m.text, dateStr);
+                        container.appendChild(div);
+                    });
+                }
+                document.getElementById('msg-dot').style.display = hasUnread ? 'block' : 'none';
+            });
+
+            // Kalendář stravy
+            onValue(ref(db, 'K_objednani'), async (snapshot) => {
+                dbDataObjednani = snapshot.val() || {};
+                await cleanOldDates(dbDataObjednani); // Promaže minulost a pak vykreslí
+                renderCalendar();
+            });
+        }
+
+        window.openMessage = async (id, title, text, dateStr) => {
+            document.getElementById('read-msg-title').innerText = title;
+            document.getElementById('read-msg-date').innerText = dateStr;
+            document.getElementById('read-msg-body').innerText = text;
+            switchPage('cteni-zpravy');
+            await update(ref(db, 'Zpravy/' + id), { precteno: true });
+        };
+
+        // Čištění starých záznamů
+        async function cleanOldDates(data) {
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            
+            for(let dateKey in data) {
+                const mealDate = new Date(dateKey);
+                if(mealDate < today) {
+                    await remove(ref(db, 'K_objednani/' + dateKey));
+                    delete data[dateKey];
+                }
+            }
+        }
+
+        // Pomocné pro datum a čas
+        function getDeadline(dateKey) {
+            let d = new Date(dateKey);
+            d.setDate(d.getDate() - 1); // Den předtím
+            d.setHours(22, 0, 0, 0); // Ve 22:00
+            return d;
+        }
+
+        function formatDateString(d) {
+            return `${DAYS[d.getDay()]} ${d.getDate()}. ${d.getMonth()+1}. ${d.getFullYear()}`;
+        }
+
+        function formatAllergensShort(arr) {
+            if(!arr || arr === "none" || arr.length === 0) return "";
+            return `(${arr.join(', ')}) <i>i</i>`;
+        }
+
+        function renderCalendar() {
+            const container = document.getElementById('calendar-container');
+            container.innerHTML = "";
+            const sortedDates = Object.keys(dbDataObjednani).sort();
+            originalOrders = {};
+            uiOrders = {};
+
+            if(sortedDates.length === 0) {
+                container.innerHTML = "<p style='text-align:center;'>Žádná strava není naplánována.</p>";
+                return;
+            }
+
+            const now = new Date();
+
+            sortedDates.forEach(dateKey => {
+                const dayData = dbDataObjednani[dateKey];
+                const mealDate = new Date(dateKey);
+                const dayOfWeek = mealDate.getDay();
+                if(dayOfWeek === 0 || dayOfWeek === 6) return; // Víkend přeskočíme
+
+                const deadline = getDeadline(dateKey);
+                const isLocked = now > deadline;
+                const deadlineStr = `${formatDateString(deadline)}, 22:00`;
+
+                // Uložení orig stavu
+                let selectedMeal = null;
+                if(dayData.obed1 && dayData.obed1.selected) selectedMeal = 'obed1';
+                else if(dayData.obed2 && dayData.obed2.selected) selectedMeal = 'obed2';
+                originalOrders[dateKey] = selectedMeal;
+                uiOrders[dateKey] = selectedMeal;
+
+                const card = document.createElement('div');
+                card.className = 'day-card';
+                
+                const titleDiv = document.createElement('div');
+                titleDiv.className = 'day-title';
+                titleDiv.innerHTML = `<span class="check-icon" id="check-${dateKey}" style="display:${selectedMeal ? 'block':'none'}">✓</span> ${formatDateString(mealDate)}`;
+                card.appendChild(titleDiv);
+
+                if(dayData.isHoliday) {
+                    card.innerHTML += `<p style="text-align:center; color:var(--danger); font-weight:bold; margin:10px 0;">Státní svátek / volno / školní akce - nelze objednat</p>`;
+                } else {
+                    // Polévka
+                    if(dayData.polevka) {
+                        card.appendChild(createMealHTML('Polévka:', dayData.polevka, dateKey, 'polevka', false, isLocked, deadlineStr));
+                    }
+                    // Oběd 1
+                    if(dayData.obed1) {
+                        card.appendChild(createMealHTML('Oběd 1:', dayData.obed1, dateKey, 'obed1', true, isLocked, deadlineStr));
+                    }
+                    // Oběd 2
+                    if(dayData.obed2) {
+                        card.appendChild(createMealHTML('Oběd 2:', dayData.obed2, dateKey, 'obed2', true, isLocked, deadlineStr));
+                    }
+                }
+                container.appendChild(card);
+            });
+            evaluateCart();
+        }
+
+        function createMealHTML(label, data, dateKey, typeId, showCheckbox, isLocked, deadlineStr) {
+            const row = document.createElement('div');
+            row.className = 'meal-row';
+            
+            let alrgHTML = formatAllergensShort(data.alergeny);
+            let checkHTML = "";
+            let isChecked = data.selected || false;
+
+            if(showCheckbox) {
+                checkHTML = `<div class="custom-checkbox ${isChecked ? 'checked' : ''} ${isLocked ? 'disabled' : ''}" id="box-${dateKey}-${typeId}" onclick="toggleCheck('${dateKey}', '${typeId}', ${isLocked})"></div>`;
+            }
+
+            row.innerHTML = `
+                <span class="meal-label">${label}</span>
+                <div class="meal-content">
+                    <div class="meal-name">
+                        ${data.nazev}
+                        ${alrgHTML ? `<div class="allergens" onclick="openInfo('${dateKey}', '${typeId}', '${label}', '${deadlineStr}')">${alrgHTML}</div>` : ''}
+                    </div>
+                    ${checkHTML}
+                </div>
+            `;
+            return row;
+        }
+
+        window.openInfo = (dateKey, typeId, labelName, deadlineStr) => {
+            const data = dbDataObjednani[dateKey][typeId];
+            const title = `${DAYS[new Date(dateKey).getDay()]} ${new Date(dateKey).toLocaleDateString('cs-CZ')} - ${labelName.replace(':','')}`;
+            openModalInfo(title, data.nazev, data.alergeny, deadlineStr);
+        };
+
+        window.toggleCheck = (dateKey, typeId, isLocked) => {
+            if(isLocked) return;
+            
+            const currentSelected = uiOrders[dateKey];
+
+            // --- KONTROLA ZŮSTATKU PŘED ZMĚNOU ---
+            let simulatedUiOrders = { ...uiOrders };
+            simulatedUiOrders[dateKey] = (currentSelected === typeId) ? null : typeId;
+            
+            let simulatedCost = 0;
+            for(let date in simulatedUiOrders) {
+                let orig = originalOrders[date];
+                let ui = simulatedUiOrders[date];
+                if(orig !== ui) {
+                    if(!orig && ui) simulatedCost -= 45;
+                    if(orig && !ui) simulatedCost += 45;
+                }
+            }
+            
+            if (currentBalance + simulatedCost < 0) {
+                document.getElementById('modal-no-balance').style.display = 'flex';
+                return; // Zablokuje změnu a nepustí kód dál
+            }
+            // --- KONEC KONTROLY ---
+
+            const box1 = document.getElementById(`box-${dateKey}-obed1`);
+            const box2 = document.getElementById(`box-${dateKey}-obed2`);
+            
+            if(currentSelected === typeId) {
+                // Odškrtnutí
+                uiOrders[dateKey] = null;
+                document.getElementById(`box-${dateKey}-${typeId}`).classList.remove('checked');
+                document.getElementById(`check-${dateKey}`).style.display = 'none';
+            } else {
+                // Zaškrtnutí nového (a zrušení starého)
+                uiOrders[dateKey] = typeId;
+                if(box1) box1.classList.remove('checked');
+                if(box2) box2.classList.remove('checked');
+                document.getElementById(`box-${dateKey}-${typeId}`).classList.add('checked');
+                document.getElementById(`check-${dateKey}`).style.display = 'block';
+            }
+            evaluateCart();
+        };
+
+        // Košík
+        function evaluateCart() {
+            let cost = 0; // - číslo znamená výdaj
+            let countChange = 0;
+
+            for(let date in uiOrders) {
+                let orig = originalOrders[date];
+                let ui = uiOrders[date];
+                
+                if(orig !== ui) {
+                    if(!orig && ui) { cost -= 45; countChange++; } // Přidáno jídlo
+                    if(orig && !ui) { cost += 45; countChange++; } // Zrušeno jídlo
+                    if(orig && ui) { /* Změna jídla O1 za O2, finančně 0 */ countChange++; }
+                }
+            }
+
+            const cart = document.getElementById('cart-bar');
+            if(countChange > 0) {
+                const textEl = document.getElementById('cart-text');
+                let newBal = currentBalance + cost;
+                let colorClass = cost < 0 ? 'red' : (cost > 0 ? 'green' : '');
+                let sign = cost > 0 ? '+' : '';
+                textEl.innerHTML = `${currentBalance} Kč | <span class="${colorClass}">${sign}${cost} Kč</span> = Nový zůstatek: ${newBal} Kč`;
+                cart.style.display = 'flex';
+            } else {
+                cart.style.display = 'none';
+            }
+        }
+
+        window.cancelCart = () => {
+            // Vrátíme UI do původního stavu z DB
+            renderCalendar(); 
+            document.getElementById('cart-bar').style.display = 'none';
+        };
+
+        window.confirmCart = async () => {
+            let cost = 0;
+            let updates = {};
+
+            for(let date in uiOrders) {
+                let orig = originalOrders[date];
+                let ui = uiOrders[date];
+                
+                if(orig !== ui) {
+                    if(!orig && ui) cost -= 45;
+                    if(orig && !ui) cost += 45;
+                    
+                    // Nastavení selected v DB
+                    if(dbDataObjednani[date].obed1) updates[`K_objednani/${date}/obed1/selected`] = (ui === 'obed1');
+                    if(dbDataObjednani[date].obed2) updates[`K_objednani/${date}/obed2/selected`] = (ui === 'obed2');
+                }
+            }
+
+            let newBalance = currentBalance + cost;
+            updates['Profil/zustatek'] = newBalance;
+
+            try {
+                await update(ref(db), updates);
+                document.getElementById('cart-bar').style.display = 'none';
+            } catch (e) {
+                alert("Chyba při ukládání!");
+            }
+        };
+
+        initApp();
+    </script>
+</body>
+</html>
